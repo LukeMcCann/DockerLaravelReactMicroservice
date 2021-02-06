@@ -1,0 +1,103 @@
+version: '3.8'
+services:
+
+# Server
+  webserver:
+    image: nginx:1.19.6-alpine
+    restart: always
+    tty: true
+    ports: 
+      - "8080:80"
+      - "443:443"
+    volumes: 
+      - ./apps/public-tennis-courts-api/app/:/var/www/public-tennis-courts-api
+      - ./apps/public-tennis-courts-gui/app/:/var/www/public-tennis-courts-gui
+      - ./infrastructure/webserver/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./infrastructure/webserver/nginx/sites/:/etc/nginx/conf.d
+      - ./infrastructure/webserver/nginx/ssl/:/etc/ssl/
+    depends_on:
+      - public-tennis-courts-api
+      - public-tennis-courts-gui
+      - db
+    networks:
+      - app-network
+
+# Database
+  db:
+    image: mysql:8.0.22
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "3306:3306"
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - ./infrastructure/db/mysql:/var/lib/mysql/
+      - ./infrastructure/db/mysql/config/my.cnf:/etc/mysql/my.cnf
+    networks:
+      - app-network
+
+# Backend APIs
+  public-tennis-courts-api: 
+    build: 
+      context: ./apps/public-tennis-courts-api
+      dockerfile:  Dockerfile
+    restart: unless-stopped
+    tty: true 
+    environment:
+      SERVICE_NAME: public-tennis-courts-api
+      SERVICE_TAGS: dev
+    working_dir: /var/www/public-tennis-courts-api
+    volumes: 
+      - ./apps/public-tennis-courts-api/app/:/var/www/public-tennis-courts-api
+      - ./infrastructure/php/local.ini:/user/local/etc/php/conf.d/local.ini
+    networks:
+      - app-network
+
+# Frontend GUIs
+  public-tennis-courts-gui:
+    build: 
+      context: ./apps/public-tennis-courts-gui
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    tty: true
+    environment:
+      SERVICE_NAME: public-tennis-courts-gui
+      SERVICE_TAGS: dev
+    working_dir: /var/www/public-tennis-courts-gui
+    volumes: 
+      - ./apps/public-tennis-courts-gui/:/var/www/public-tennis-courts-gui
+      - ./infrastructure/php/local.ini:/user/local/etc/php/conf.d/local.ini
+    networks:
+      - app-network
+
+# Micellaneous Tools
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    ports:
+      - 5000:80
+    environment:
+      - PMA_ARBITRARY=1
+      - PMA_HOST=mysql
+    restart: always 
+    links:
+      - db
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+# Networks
+networks:
+  app-network:
+    driver: bridge
+
+# Volumes
+volumes:
+  dbdata:
+    driver: local
